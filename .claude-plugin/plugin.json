@@ -1,0 +1,17 @@
+{
+  "name": "sleachga-skills",
+  "version": "0.1.0",
+  "description": "Sanford Leach's agent skills: trio (parallel subagent fan-out), expand, and concise.",
+  "author": {
+    "name": "Sanford Leach",
+    "url": "https://github.com/Sleachga"
+  },
+  "repository": "https://github.com/sleachga/skills",
+  "license": "MIT",
+  "keywords": ["skills", "subagents", "fan-out", "verbosity"],
+  "skills": [
+    "./skills/trio",
+    "./skills/expand",
+    "./skills/concise"
+  ]
+}

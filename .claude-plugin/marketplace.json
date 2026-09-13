@@ -1,0 +1,17 @@
+{
+  "name": "sleachga",
+  "owner": {
+    "name": "Sanford Leach",
+    "url": "https://github.com/Sleachga"
+  },
+  "description": "Sanford Leach's Claude Code skills, as an installable plugin.",
+  "plugins": [
+    {
+      "name": "sleachga-skills",
+      "source": "./",
+      "description": "Sanford Leach's agent skills: trio (parallel subagent fan-out), expand, and concise.",
+      "category": "productivity",
+      "keywords": ["skills", "subagents", "fan-out", "verbosity"]
+    }
+  ]
+}
