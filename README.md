@@ -6,8 +6,10 @@ My Claude Code skills, installable as a plugin.
 
 - **/trio** — fan out three parallel subagents on one task (mixed models,
   independent takes), then synthesize their results.
-- **/expand** — re-deliver the previous answer in full detail.
-- **/concise** — compress the previous answer to maximum information density.
+- **/expand** — re-answer the previous response in full detail; takes an
+  optional subject to expand just one part.
+- **/concise** — toggle concise mode: every answer bullets-only at maximum
+  density, until turned off.
 
 ## Installation
 
