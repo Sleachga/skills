@@ -27,7 +27,7 @@ requested, so the push can say `Bash: rm -rf node_modules` rather than
 | --- | --- |
 | `/notify` (bare) | Push a one-line summary of what just happened in this turn |
 | `/notify <message>` | Push that text verbatim |
-| `/notify setup` | First-time setup — see [SETUP.md](SETUP.md); [EXAMPLE.md](EXAMPLE.md) is a full worked run |
+| `/notify setup` | Hand them `scripts/notify.sh setup` to run — see [SETUP.md](SETUP.md) |
 | `/notify test` | Push a test, then confirm arrival via the ntfy poll API |
 | `/notify auth` | Store an ntfy access token — see [Credentials](#credentials) |
 | `/notify status` | Report topic, auth, hook state, sound. Change nothing. |
@@ -44,10 +44,14 @@ not the skill, so a bare relative path will not find them.
 ${CLAUDE_SKILL_DIR}/scripts/notify.sh push "Migration done, tests still running"
 ```
 
-Exit 0 with no output means delivered. Both failures are non-zero but mean
-different things, and the message says which: `no topic configured` means setup
-never ran — route the user to `/notify setup`. `push failed` means the topic is
-fine and the relay was unreachable — say so once and move on, don't retry.
+Exit 0 with no output means delivered. Three failures are possible and the
+message says which, because they need different fixes:
+
+| Message | Meaning | Route to |
+| --- | --- | --- |
+| `no topic configured` | setup never ran | `/notify setup` |
+| `relay rejected the credentials` | token missing, wrong or expired | `/notify auth` |
+| `push failed` | topic fine, relay unreachable | say so once, don't retry |
 
 Keep pushes to one line, under ~120 chars. It lands on a watch face.
 
@@ -68,10 +72,12 @@ So ask, during setup, which of these the user is on:
 
 **Never handle the token yourself.** Do not ask the user to paste it into the
 chat, do not pass it as a command argument, and do not read it from a file to
-echo back. Tell them to run this in their own terminal:
+echo back. Tell them to run setup, or just the auth step, in their own
+terminal:
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/notify.sh auth
+${CLAUDE_SKILL_DIR}/scripts/notify.sh setup   # the whole flow
+${CLAUDE_SKILL_DIR}/scripts/notify.sh auth    # just the token
 ```
 
 It prompts, reads the token from stdin with echo off, and writes it to

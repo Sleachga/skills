@@ -1,95 +1,64 @@
 # Setup
 
-[EXAMPLE.md](EXAMPLE.md) is a complete worked run of these steps with real
-output, plus exactly what data reaches ntfy.sh. Read it if the user asks what
-the setup looks like, what gets sent, or whether it is safe.
+[EXAMPLE.md](EXAMPLE.md) is a complete worked run with real output, plus
+exactly what data reaches ntfy.sh. Read it if the user asks what the setup
+looks like, what gets sent, or whether it is safe.
 
-Walk the user through this. One step at a time — stop and confirm each before
-moving on. Steps 3 and 4 happen on their phone and step 2 may happen in their
-own terminal; you cannot verify any of those, so ask.
+## Hand them the script
 
-## 1. Pick a topic
-
-```bash
-${CLAUDE_SKILL_DIR}/scripts/notify.sh init
-```
-
-Generates a 20-char random topic, writes `~/.claude/ntfy-topic` (mode 600),
-prints it. Already configured? It prints the existing topic and changes
-nothing — pass `--force` to rotate.
-
-**Show the user the topic string.** They need to type it on their phone.
-
-## 2. Ask which relay, and whether it needs credentials
-
-Ask before going further, because it changes what the topic is worth:
-
-> The free `ntfy.sh` relay has no accounts — anyone who knows your topic name
-> can read everything pushed to it. The approval notification includes the
-> command Claude wants to run. Are you happy on the public relay, or do you
-> have an ntfy Pro account or your own server?
-
-**Public free relay** — nothing to do, continue to step 3. Say plainly that the
-topic name is the only protection.
-
-**ntfy Pro or self-hosted with access control** — they need an access token.
-Do not take it into the chat. Ask them to run this in their own terminal:
+Setup is one command, and **the user should run it themselves in their own
+terminal**:
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/notify.sh auth
+${CLAUDE_SKILL_DIR}/scripts/notify.sh setup
 ```
 
-It prompts with echo off, reads from stdin, and writes `~/.claude/ntfy-token`
-at mode 600. It never prints the token, and neither does `status`. For a
-self-hosted server they also need `export NTFY_SERVER=https://ntfy.example.com`
-in their shell profile, and for basic auth instead of a token, `NTFY_USER` and
-`NTFY_PASSWORD`.
+That is not ceremony. The script prompts for the ntfy access token with echo
+off and reads it from stdin, so a token never has to travel through a
+conversation, a tool call, or a transcript. If you run setup on their behalf,
+that prompt is the one thing you cannot do for them.
 
-Confirm with `notify.sh status`, which reports the kind of credential without
-revealing it.
+It is safe to re-run: an existing topic is kept, hooks are de-duplicated, and
+nothing is sent without asking.
 
-## 3. Install the phone app
+## What it does
 
-Tell them: install **ntfy** from the Play Store (Android) or App Store (iOS).
-Free, no account.
+| Step | Action |
+| --- | --- |
+| 1 | Creates or reuses the ntfy topic, and prints it for the phone |
+| 2 | Asks which relay: public, ntfy Pro with a token, or self-hosted |
+| 3 | Installs the `Stop`, `Notification` and `PermissionRequest` hooks |
+| 4 | Prints the resulting configuration |
+| 5 | Offers a test push, after asking |
 
-## 4. Subscribe
+Then it lists what is left, which is all on their phone.
 
-In the ntfy app: **+** → paste the topic → Subscribe. Leave the server as the
-default `ntfy.sh` unless `NTFY_SERVER` is set to a self-hosted instance.
+## If you run it yourself
 
-Wait for them to confirm they've subscribed before the test push. A test push to an
-unsubscribed topic looks identical to a broken setup.
+You can. It detects that it has no terminal and adapts: it creates the topic,
+installs the hooks, prints the configuration, and **skips both the token prompt
+and the test push** rather than pretending. It then tells the user which two
+commands to run themselves.
 
-## 5. Watch mirroring
+That is the right division. Everything except credentials and consenting to an
+outbound push is yours to do; those two are theirs.
 
-- **Galaxy Watch / Wear OS** — Galaxy Wearable app → Notifications → confirm
-  ntfy is enabled. Mirroring is on by default; the app list is per-app.
-- **Apple Watch** — Watch app → Notifications → ntfy → Mirror iPhone.
+## Talking them through it
 
-Skip this step if they have no watch.
+Stop and confirm at each of these, because you cannot verify any of them:
 
-## 6. Install the hooks
-
-```bash
-${CLAUDE_SKILL_DIR}/scripts/install-hooks.sh
-```
-
-Adds three hooks to `~/.claude/settings.json`: `PermissionRequest` for when
-Claude is blocked waiting on approval, `Notification` for Claude Code's own
-notifications, and `Stop` for a finished turn. Report the paths it prints.
-
-## 7. Verify end to end
-
-```bash
-${CLAUDE_SKILL_DIR}/scripts/notify.sh test
-```
-
-Sends a push, then polls the ntfy API to confirm the server accepted it. A
-green result proves server-side delivery only — **ask the user whether the
-phone and watch actually buzzed.** That last hop is the one that breaks.
-
-Then tell them: hooks need a Claude Code restart to take effect this session.
+- **The relay choice.** On the free tier there are no accounts, so the topic
+  name is the only protection — and the approval notification carries the
+  command line Claude wants to run. Say that plainly before they pick.
+- **ntfy Pro is not private by default.** A token authenticates, but ntfy.sh
+  topics stay world-readable unless the topic is *reserved* under their
+  account. Tell them to reserve it and restrict it, or they get authentication
+  without privacy.
+- **Subscribing on the phone**, before the test push. A push to a topic nobody
+  is subscribed to looks identical to a broken setup.
+- **Whether it actually buzzed.** `test` proves the relay accepted the message,
+  not that the watch lit up. Ask out loud.
+- **Restarting Claude Code**, or the hooks stay dormant for the session.
 
 ## Tuning
 
@@ -98,10 +67,12 @@ Then tell them: hooks need a Claude Code restart to take effect this session.
 | Different sound | `export CLAUDE_NOTIFY_SOUND=/System/Library/Sounds/Hero.aiff` |
 | Silence local sound, keep the buzz | `export CLAUDE_NOTIFY_SILENT=1` |
 | Keep the ding, kill the push | `rm ~/.claude/ntfy-topic` |
-| Self-hosted ntfy | `export NTFY_SERVER=https://ntfy.example.com` |
+| Self-hosted relay | setup step 2 stores it, or `export NTFY_SERVER=...` |
+| Basic auth instead of a token | `NTFY_USER` and `NTFY_PASSWORD` |
 | Rotate a leaked topic | `notify.sh init --force`, then resubscribe on the phone |
 | Add or replace a token | `notify.sh auth` (the user runs it, not you) |
 | Drop the token | `notify.sh auth --clear` |
+| Remove the hooks | `install-hooks.sh --remove` |
 
 macOS sounds live in `/System/Library/Sounds` — `Glass` (default), `Hero`,
 `Submarine`, `Sosumi`, `Ping`. Elsewhere, an unreadable sound file degrades to
@@ -115,9 +86,9 @@ too. The random topic name is the only thing protecting it.
 
 Weigh that against what the hooks actually send. The approval push carries the
 command Claude wants to run, so a command naming an internal hostname or a path
-puts that on a public relay. If that is not acceptable, the answer is an access
-token plus ntfy's access control, or a self-hosted server — not a promise to be
+puts that on a public relay. If that is not acceptable, the answer is a
+reserved topic plus a token, or a self-hosted server — not a promise to be
 careful.
 
-The token itself lives in `~/.claude/ntfy-token` at mode 600 and is never
-printed, not by `auth` and not by `status`. Keep it out of the conversation.
+The token lives in `~/.claude/ntfy-token` at mode 600 and is never printed, not
+by `auth`, not by `setup`, not by `status`. Keep it out of the conversation.

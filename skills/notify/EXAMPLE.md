@@ -7,6 +7,17 @@ output. The network leg is shown as the exact request the script builds — see
 
 The whole thing takes about two minutes, most of it on your phone.
 
+In practice you run one command and it walks the steps below for you:
+
+```
+$ skills/notify/scripts/notify.sh setup
+```
+
+Run it yourself rather than having Claude run it. It prompts for the access
+token with echo off, which is the one step that cannot be delegated without the
+token landing in a transcript. The individual commands are shown below so you
+can see what it is doing, and they all work standalone.
+
 ## 1. Claude picks a topic
 
 ```

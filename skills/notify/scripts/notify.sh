@@ -6,6 +6,7 @@
 #   notify.sh permission     hook mode, PermissionRequest event (hook JSON on stdin)
 #   notify.sh push "text"    ad-hoc push
 #   notify.sh init [--force] create/print the ntfy topic
+#   notify.sh setup          guided first-time setup, start to finish
 #   notify.sh auth           store an ntfy access token (reads it from stdin)
 #   notify.sh auth --clear   forget the stored token
 #   notify.sh test           push a probe, verify the server accepted it
@@ -14,6 +15,7 @@
 # Config (all optional):
 #   ~/.claude/ntfy-topic   topic name, one line          (or $NTFY_TOPIC)
 #   ~/.claude/ntfy-token   ntfy access token, one line   (or $NTFY_TOKEN)
+#   ~/.claude/ntfy-server  relay URL, one line           (or $NTFY_SERVER)
 #   NTFY_USER/NTFY_PASSWORD  basic auth, if the server uses it instead
 #   NTFY_SERVER            default https://ntfy.sh
 #   CLAUDE_NOTIFY_SOUND    path to a sound file
@@ -24,8 +26,18 @@ set -uo pipefail
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 TOPIC_FILE="$CLAUDE_DIR/ntfy-topic"
 TOKEN_FILE="$CLAUDE_DIR/ntfy-token"
+SERVER_FILE="$CLAUDE_DIR/ntfy-server"
 SETTINGS="$CLAUDE_DIR/settings.json"
-SERVER="${NTFY_SERVER:-https://ntfy.sh}"
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+read_server() {
+  if [ -n "${NTFY_SERVER:-}" ]; then printf '%s' "$NTFY_SERVER"; return 0; fi
+  if [ -r "$SERVER_FILE" ] && [ -s "$SERVER_FILE" ]; then
+    tr -d '[:space:]' < "$SERVER_FILE"; return 0
+  fi
+  printf 'https://ntfy.sh'
+}
+SERVER="$(read_server)"
 DEFAULT_SOUND="/System/Library/Sounds/Glass.aiff"
 SOUND="${CLAUDE_NOTIFY_SOUND:-$DEFAULT_SOUND}"
 
@@ -210,6 +222,104 @@ cmd_auth() {
   printf 'verify with: notify.sh test\n'
 }
 
+ask() {  # ask <prompt> <default>  -> echoes the answer
+  local reply
+  printf '%s' "$1" >&2
+  read -r reply || reply=""
+  printf '%s' "${reply:-$2}"
+}
+
+# The whole first-time flow in one command. It exists so the user can run setup
+# themselves in their own terminal: the access token is prompted for here, with
+# echo off, and so never has to travel through a conversation with Claude.
+cmd_setup() {
+  local interactive=1; [ -t 0 ] || interactive=0
+  local topic choice srv yn
+
+  printf '\n=== notify setup ===\n\n'
+
+  # --- 1. topic -------------------------------------------------------------
+  if topic="$(require_topic)"; then
+    printf '1/5  topic: %s\n     (already configured; notify.sh init --force rotates it)\n' "$topic"
+  else
+    cmd_init >/dev/null || die "could not create a topic"
+    topic="$(require_topic)" || die "topic was not written"
+    printf '1/5  topic: %s\n     (new)\n' "$topic"
+  fi
+  printf '\n     Subscribe to that exact string in the ntfy phone app.\n\n'
+
+  # --- 2. relay and credentials --------------------------------------------
+  if [ "$interactive" -eq 1 ]; then
+    printf '2/5  Which relay?\n'
+    printf '       1) public ntfy.sh, no account\n'
+    printf '       2) ntfy Pro, access token\n'
+    printf '       3) self-hosted server\n'
+    choice="$(ask '     choose [1]: ' 1)"
+    case "$choice" in
+      2) cmd_auth ;;
+      3) srv="$(ask '     server URL (e.g. https://ntfy.example.com): ' '')"
+         if [ -n "$srv" ]; then
+           mkdir -p "$CLAUDE_DIR"; printf '%s\n' "$srv" > "$SERVER_FILE"; SERVER="$srv"
+           printf '     server saved to %s\n' "$SERVER_FILE"
+         fi
+         yn="$(ask '     use an access token? [y/N]: ' n)"
+         case "$yn" in
+           [Yy]*) cmd_auth ;;
+           *) printf '     no token stored. set NTFY_USER and NTFY_PASSWORD for basic auth.\n' ;;
+         esac ;;
+      *) printf '     Public relay. There are no accounts on the free tier, so anyone\n'
+         printf '     who knows the topic string can read everything pushed to it —\n'
+         printf '     including the command line in an approval notification.\n' ;;
+    esac
+  else
+    printf '2/5  credentials: skipped, this is not a terminal.\n'
+    printf '     If your relay needs auth, run "notify.sh auth" yourself so the\n'
+    printf '     token is typed rather than pasted into a transcript.\n'
+  fi
+  printf '\n'
+
+  # --- 3. hooks -------------------------------------------------------------
+  if [ -x "$SELF_DIR/install-hooks.sh" ]; then
+    if [ "$interactive" -eq 1 ]; then
+      yn="$(ask '3/5  Install the Claude Code hooks now? [Y/n]: ' y)"
+    else
+      yn=y
+      printf '3/5  installing hooks\n'
+    fi
+    case "$yn" in
+      [Nn]*) printf '     skipped. run install-hooks.sh when ready.\n' ;;
+      *)     "$SELF_DIR/install-hooks.sh" 2>&1 | sed 's/^/     /' || printf '     hook install failed - see above\n' ;;
+    esac
+  else
+    printf '3/5  install-hooks.sh not found next to this script; install hooks manually.\n'
+  fi
+  printf '\n'
+
+  # --- 4. what we ended up with --------------------------------------------
+  printf '4/5  configuration\n'
+  cmd_status | sed 's/^/     /'
+  printf '\n'
+
+  # --- 5. verify ------------------------------------------------------------
+  # a push is an outbound message to a third party, so ask before sending one
+  if [ "$interactive" -eq 1 ]; then
+    yn="$(ask '5/5  Send a test push now? Subscribe on the phone first. [Y/n]: ' y)"
+  else
+    yn=n
+    printf '5/5  test push skipped (not a terminal). run "notify.sh test" when subscribed.\n'
+  fi
+  case "$yn" in
+    [Nn]*) [ "$interactive" -eq 1 ] && printf '     skipped. run "notify.sh test" when you are subscribed.\n' ;;
+    *)     cmd_test || printf '     test failed - see the message above.\n' ;;
+  esac
+
+  printf '\n=== remaining, on your phone ===\n'
+  printf '  * install ntfy (Play Store / App Store), subscribe to: %s\n' "$topic"
+  printf '  * watch: Galaxy Wearable -> Notifications -> enable ntfy,\n'
+  printf '           or Watch app -> Notifications -> ntfy -> Mirror iPhone\n'
+  printf '  * restart Claude Code, or the hooks stay dormant this session\n\n'
+}
+
 cmd_test() {
   local topic stamp
   topic="$(require_topic)" || die "no topic configured - run: notify.sh init"
@@ -243,7 +353,9 @@ cmd_status() {
   else
     printf 'topic:   (none - run: notify.sh init)\n'
   fi
-  printf 'server:  %s\n' "$SERVER"
+  if [ -n "${NTFY_SERVER:-}" ]; then printf 'server:  %s (from $NTFY_SERVER)\n' "$SERVER"
+  elif [ -r "$SERVER_FILE" ];   then printf 'server:  %s (%s)\n' "$SERVER" "$SERVER_FILE"
+  else                               printf 'server:  %s (default)\n' "$SERVER"; fi
   printf 'auth:    %s\n' "$(auth_kind)"
   if [ -n "${CLAUDE_NOTIFY_SILENT:-}" ]; then
     printf 'sound:   muted (CLAUDE_NOTIFY_SILENT set)\n'
@@ -269,7 +381,8 @@ case "${1:-}" in
   push)       shift; cmd_push "$@" ;;
   init)       shift; cmd_init "${1:-}" ;;
   auth)       shift; cmd_auth "${1:-}" ;;
+  setup)      cmd_setup ;;
   test)       cmd_test ;;
   status)     cmd_status ;;
-  *)          die "usage: notify.sh {stop|input|permission|push <msg>|init [--force]|auth [--clear]|test|status}" ;;
+  *)          die "usage: notify.sh {setup|stop|input|permission|push <msg>|init [--force]|auth [--clear]|test|status}" ;;
 esac
