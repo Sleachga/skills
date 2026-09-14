@@ -7,7 +7,6 @@ description: >
   targets the task already under discussion. Use when the user invokes /trio
   or asks for trio, the trio, or pair programming by name.
 argument-hint: "[task]"
-disable-model-invocation: true
 ---
 
 # Trio
@@ -16,6 +15,9 @@ Three seats on one task. A **driver** writes the code. A **navigator** watches
 what the driver did and corrects it. A **tester** writes tests without seeing
 the implementation. You are none of them — you are the coordinator who runs the
 loop, holds the ground truth, and decides.
+
+[EXAMPLE.md](EXAMPLE.md) is a full worked run if you want to see the shape of
+one before running it.
 
 The value is structural, not extra effort. An agent reviewing its own work
 grades its own homework, and an agent writing tests for code it just wrote

@@ -7,6 +7,7 @@ My Claude Code skills, installable as a plugin.
 - **/trio** — pair program with three agents: a driver that writes the code,
   a navigator that reviews everything it did and corrects it, and a tester
   that writes tests without seeing the implementation.
+  `skills/trio/EXAMPLE.md` is a worked run.
 - **/expand** — re-answer the previous response in full detail; takes an
   optional subject to expand just one part.
 - **/concise** — toggle concise mode: every answer bullets-only at maximum
