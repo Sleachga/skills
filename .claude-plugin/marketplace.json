@@ -9,9 +9,17 @@
     {
       "name": "sleachga-skills",
       "source": "./",
-      "description": "Sanford Leach's agent skills: trio (parallel subagent fan-out), expand, and concise.",
+      "description": "Sanford Leach's agent skills: trio (parallel subagent fan-out), expand, concise, and notify (phone/watch push).",
       "category": "productivity",
-      "keywords": ["skills", "subagents", "fan-out", "verbosity"]
+      "keywords": [
+        "skills",
+        "subagents",
+        "fan-out",
+        "verbosity",
+        "notifications",
+        "ntfy",
+        "hooks"
+      ]
     }
   ]
 }
