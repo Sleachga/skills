@@ -19,6 +19,9 @@ loop, holds the ground truth, and decides.
 [EXAMPLE.md](EXAMPLE.md) is a full worked run if you want to see the shape of
 one before running it.
 
+For breadth rather than build quality — several independent takes on one
+question, no team — use `/fanout` instead.
+
 The value is structural, not extra effort. An agent reviewing its own work
 grades its own homework, and an agent writing tests for code it just wrote
 writes tests that pass. Separating the seats is what makes the review real.

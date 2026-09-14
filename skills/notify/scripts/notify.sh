@@ -64,17 +64,25 @@ read_token() {
   tr -d '[:space:]' < "$TOKEN_FILE"
 }
 
-# emits nothing when the relay needs no credentials, which is the ntfy.sh default
-auth_args() {
+# Credentials go to curl through a config file on stdin, never in argv: an
+# argument is visible to every user on the machine in ps output. Emits nothing
+# when the relay needs no credentials, which is the ntfy.sh default.
+cfg_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+auth_config() {
   local tok
   if tok="$(read_token)" && [ -n "$tok" ]; then
-    AUTH=(-H "Authorization: Bearer $tok")
+    printf 'header = "Authorization: Bearer %s"\n' "$(cfg_escape "$tok")"
   elif [ -n "${NTFY_USER:-}" ]; then
-    AUTH=(-u "${NTFY_USER}:${NTFY_PASSWORD:-}")
-  else
-    AUTH=()
+    printf 'user = "%s:%s"\n' "$(cfg_escape "$NTFY_USER")" "$(cfg_escape "${NTFY_PASSWORD:-}")"
   fi
 }
+
+# CR and LF in a header value let it forge additional headers. ntfy is
+# header-driven — a forged Actions: or Click: header puts an attacker's URL on
+# the user's phone — and the project name comes from a directory name, which is
+# attacker-influenceable via a hostile repo name.
+strip_ctl() { printf '%s' "$1" | tr -d '\000-\037\177'; }
 
 auth_kind() {
   if [ -n "${NTFY_TOKEN:-}" ]; then printf 'token (from $NTFY_TOKEN)'
@@ -83,17 +91,27 @@ auth_kind() {
   else printf 'none (topic name is the only secret)'; fi
 }
 
+# Detached and bounded. Claude Code does not enforce `timeout` on an async hook,
+# so a player blocked on a dead audio socket would otherwise hang this hook
+# forever and leak a process per turn.
 play_sound() {
   [ -z "${CLAUDE_NOTIFY_SILENT:-}" ] || return 0
+  PLAYER=""
   if [ -r "$SOUND" ]; then
-    if   command -v afplay >/dev/null 2>&1; then afplay "$SOUND" >/dev/null 2>&1 &
-    elif command -v paplay >/dev/null 2>&1; then paplay "$SOUND" >/dev/null 2>&1 &
-    elif command -v aplay  >/dev/null 2>&1; then aplay -q "$SOUND" >/dev/null 2>&1 &
-    else printf '\a' >&2
+    if   command -v afplay >/dev/null 2>&1; then PLAYER="afplay"
+    elif command -v paplay >/dev/null 2>&1; then PLAYER="paplay"
+    elif command -v aplay  >/dev/null 2>&1; then PLAYER="aplay -q"
     fi
-  else
-    printf '\a' >&2
   fi
+  if [ -z "$PLAYER" ]; then printf '\a' >&2; return 0; fi
+  (
+    $PLAYER "$SOUND" >/dev/null 2>&1 &
+    _p=$!
+    ( sleep 10; kill -9 "$_p" >/dev/null 2>&1 ) >/dev/null 2>&1 &
+    _w=$!
+    wait "$_p" >/dev/null 2>&1
+    kill "$_w" >/dev/null 2>&1
+  ) >/dev/null 2>&1 &
 }
 
 # push <title> <body> <tags> <priority>
@@ -101,11 +119,14 @@ play_sound() {
 push() {
   local topic code; topic="$(read_topic)" || return 1
   [ -n "$topic" ] || return 1
-  auth_args
-  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 \
-    -H "Title: $1" -H "Tags: $3" -H "Priority: $4" \
-    ${AUTH[@]+"${AUTH[@]}"} \
-    -d "$2" "$SERVER/$topic" 2>/dev/null)" || return 1
+  # --data-raw, never -d: -d treats a leading @ as "read this file", which turns
+  # any attacker-supplied body into an arbitrary local file read posted to a
+  # public relay
+  code="$(auth_config | curl -sS -o /dev/null -w '%{http_code}' --max-time 8 \
+    -H "Title: $(strip_ctl "$1")" \
+    -H "Tags: $(strip_ctl "$3")" \
+    -H "Priority: $(strip_ctl "$4")" \
+    --data-raw "$2" -K - "$SERVER/$topic" 2>/dev/null)" || return 1
   case "$code" in
     2??)     return 0 ;;
     401|403) return 3 ;;
@@ -116,7 +137,7 @@ push() {
 project_name() {
   local cwd="${1:-}"
   [ -n "$cwd" ] || cwd="$PWD"
-  basename "$cwd"
+  basename -- "$cwd"
 }
 
 # keep a push readable on a watch face rather than truncated by the OS
@@ -157,7 +178,8 @@ cmd_hook() {   # $1 = stop|input|permission
       push "Claude Code - $(project_name "$cwd")" "Turn finished" "white_check_mark" "3"
       ;;
   esac
-  wait
+  # deliberately no `wait`: the push is synchronous and the sound is detached,
+  # so waiting here would block on the audio player
   # always 0: a notification must never fail a turn, and on PermissionRequest a
   # non-zero exit would interfere with the permission decision itself
   exit 0
@@ -174,7 +196,6 @@ cmd_push() {
     3) die "relay rejected the credentials - run: notify.sh auth" ;;
     *) die "push failed - check network and \$NTFY_SERVER" ;;
   esac
-  wait
 }
 
 cmd_init() {
@@ -184,10 +205,14 @@ cmd_init() {
     printf '(pass --force to rotate - you must resubscribe on your phone)\n'
     return 0
   fi
-  mkdir -p "$CLAUDE_DIR"
+  mkdir -p "$CLAUDE_DIR" 2>/dev/null || die "cannot create $CLAUDE_DIR"
   local topic="claude-code-$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 20)"
-  printf '%s\n' "$topic" > "$TOPIC_FILE"
-  chmod 600 "$TOPIC_FILE"
+  # umask, not a later chmod: chmod leaves a window where the topic — the only
+  # secret on the free tier — is world-readable
+  (umask 077; printf '%s\n' "$topic" > "$TOPIC_FILE") 2>/dev/null \
+    || die "cannot write $TOPIC_FILE"
+  [ -s "$TOPIC_FILE" ] || die "topic file is empty after writing: $TOPIC_FILE"
+  chmod 600 "$TOPIC_FILE" 2>/dev/null || true
   printf 'topic: %s\n' "$topic"
   printf 'subscribe to this in the ntfy app (server: %s)\n' "$SERVER"
 }
@@ -343,15 +368,13 @@ cmd_test() {
   local i found=0
   for i in 1 2 3 4 5; do
     sleep 2
-    auth_args
-    if curl -fsS --max-time 10 ${AUTH[@]+"${AUTH[@]}"} "$SERVER/$topic/json?poll=1" 2>/dev/null | grep -q "$stamp"; then
+    if auth_config | curl -fsS --max-time 10 -K - "$SERVER/$topic/json?poll=1" 2>/dev/null | grep -q "$stamp"; then
       found=1; break
     fi
   done
   [ "$found" -eq 1 ] || die "push sent but never appeared on $SERVER - wrong topic or relay down"
   printf 'server accepted the push (%s, confirmed after %ss)\n' "$stamp" "$((i * 2))"
   printf 'now confirm it actually buzzed the phone and watch.\n'
-  wait
 }
 
 cmd_status() {
