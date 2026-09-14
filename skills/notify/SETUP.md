@@ -10,7 +10,7 @@ moving on. Steps 2 and 3 happen on their phone; you cannot verify them, so ask.
 ## 1. Pick a topic
 
 ```bash
-scripts/notify.sh init
+${CLAUDE_SKILL_DIR}/scripts/notify.sh init
 ```
 
 Generates a 20-char random topic, writes `~/.claude/ntfy-topic` (mode 600),
@@ -43,7 +43,7 @@ Skip this step if they have no watch.
 ## 5. Install the hooks
 
 ```bash
-scripts/install-hooks.sh
+${CLAUDE_SKILL_DIR}/scripts/install-hooks.sh
 ```
 
 Adds `Stop` (turn finished) and `Notification` (input needed) to
@@ -52,7 +52,7 @@ Adds `Stop` (turn finished) and `Notification` (input needed) to
 ## 6. Verify end to end
 
 ```bash
-scripts/notify.sh test
+${CLAUDE_SKILL_DIR}/scripts/notify.sh test
 ```
 
 Sends a push, then polls the ntfy API to confirm the server accepted it. A

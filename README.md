@@ -4,8 +4,9 @@ My Claude Code skills, installable as a plugin.
 
 ## Skills
 
-- **/trio** — fan out three parallel subagents on one task (mixed models,
-  independent takes), then synthesize their results.
+- **/trio** — pair program with three agents: a driver that writes the code,
+  a navigator that reviews everything it did and corrects it, and a tester
+  that writes tests without seeing the implementation.
 - **/expand** — re-answer the previous response in full detail; takes an
   optional subject to expand just one part.
 - **/concise** — toggle concise mode: every answer bullets-only at maximum
@@ -27,7 +28,7 @@ Inside Claude Code:
 
 ```
 .claude-plugin/   plugin + marketplace manifests
-skills/<name>/    one SKILL.md per skill
+skills/<name>/    one SKILL.md per skill, plus scripts/ where it needs them
 ```
 
 ## Notifications

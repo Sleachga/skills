@@ -22,25 +22,29 @@ Two halves. **Hooks** fire automatically — turn finished, input needed.
 | `/notify status` | Report topic, hook state, sound. Change nothing. |
 | `/notify off` | Remove the hooks and the topic file |
 
-Never guess at setup state. Run `scripts/notify.sh status` first — it prints
-topic, server, sound, and whether each hook is wired.
+Never guess at setup state. Run `notify.sh status` first — it prints topic,
+server, sound, and whether each hook is wired. Every script lives in
+`${CLAUDE_SKILL_DIR}/scripts/`; the working directory is the user's project,
+not the skill, so a bare relative path will not find them.
 
 ## Sending
 
 ```bash
-scripts/notify.sh push "Migration done, tests still running"
+${CLAUDE_SKILL_DIR}/scripts/notify.sh push "Migration done, tests still running"
 ```
 
-Exit 0 with no output means delivered. Non-zero means no topic configured —
-route the user to `/notify setup`, don't retry.
+Exit 0 with no output means delivered. Both failures are non-zero but mean
+different things, and the message says which: `no topic configured` means setup
+never ran — route the user to `/notify setup`. `push failed` means the topic is
+fine and the relay was unreachable — say so once and move on, don't retry.
 
 Keep pushes to one line, under ~120 chars. It lands on a watch face.
 
 ## Installing the hooks
 
 ```bash
-scripts/install-hooks.sh          # install or repair
-scripts/install-hooks.sh --remove # /notify off
+${CLAUDE_SKILL_DIR}/scripts/install-hooks.sh          # install or repair
+${CLAUDE_SKILL_DIR}/scripts/install-hooks.sh --remove # /notify off
 ```
 
 Idempotent: it strips any prior `notify.sh` entry from `Stop` and
