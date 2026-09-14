@@ -28,26 +28,34 @@ jq -e . "$SETTINGS" >/dev/null 2>&1 || { echo "$SETTINGS is not valid JSON - fix
 BACKUP="$SETTINGS.bak-$(date +%Y%m%d%H%M%S)"
 cp "$SETTINGS" "$BACKUP"
 
+# PermissionRequest is the event that actually fires when Claude is blocked
+# waiting for approval, and it carries tool_name/tool_input so the push can say
+# what is being asked for. Notification is kept alongside it: it covers the
+# other things Claude Code notifies about, such as auth failures.
+#
+# Every entry is async so a notification never delays the permission prompt
+# itself, and never blocks a turn behind an unreachable relay.
 if [ "$REMOVE" -eq 0 ]; then
   install -m 755 "$SRC_DIR/notify.sh" "$HOOK"
   PROGRAM='
     def clean: map(.hooks |= map(select((.command // "") | test("notify\\.sh") | not)))
              | map(select((.hooks | length) > 0));
+    def wire($ev; $arg):
+      .hooks[$ev] = (((.hooks[$ev] // []) | clean)
+        + [{hooks:[{type:"command", command:($h + " " + $arg), async:true, timeout:15}]}]);
     .hooks //= {}
-    | .hooks.Stop = (((.hooks.Stop // []) | clean)
-        + [{hooks:[{type:"command", command:($h + " stop"),  async:true, timeout:15}]}])
-    | .hooks.Notification = (((.hooks.Notification // []) | clean)
-        + [{hooks:[{type:"command", command:($h + " input"), async:true, timeout:15}]}])
+    | wire("Stop";              "stop")
+    | wire("Notification";      "input")
+    | wire("PermissionRequest"; "permission")
   '
 else
   PROGRAM='
     def clean: map(.hooks |= map(select((.command // "") | test("notify\\.sh") | not)))
              | map(select((.hooks | length) > 0));
+    def strip($ev): .hooks[$ev] = ((.hooks[$ev] // []) | clean);
     .hooks //= {}
-    | .hooks.Stop = ((.hooks.Stop // []) | clean)
-    | .hooks.Notification = ((.hooks.Notification // []) | clean)
-    | del(.hooks.Stop | select(length == 0))
-    | del(.hooks.Notification | select(length == 0))
+    | strip("Stop") | strip("Notification") | strip("PermissionRequest")
+    | .hooks |= with_entries(select((.value | length) > 0))
   '
 fi
 
@@ -58,10 +66,10 @@ mv "$SETTINGS.tmp" "$SETTINGS"
 if [ "$REMOVE" -eq 0 ]; then
   echo "hook script: $HOOK"
   echo "settings:    $SETTINGS (backup: $BACKUP)"
-  echo "wired:       Stop -> notify.sh stop, Notification -> notify.sh input"
+  echo "wired:       Stop -> stop, Notification -> input, PermissionRequest -> permission"
   echo "restart Claude Code for the hooks to take effect in this session."
 else
-  echo "removed notify.sh from Stop and Notification in $SETTINGS"
+  echo "removed notify.sh from Stop, Notification and PermissionRequest in $SETTINGS"
   echo "backup:  $BACKUP"
   echo "the script itself is still at $HOOK - delete it if you want it gone."
 fi

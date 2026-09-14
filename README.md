@@ -13,8 +13,8 @@ My Claude Code skills, installable as a plugin.
 - **/concise** — toggle concise mode: every answer bullets-only at maximum
   density, until turned off.
 - **/notify** — push a line to your phone and watch via ntfy, plus hooks that
-  ding when a turn finishes or Claude needs input. `/notify setup` walks you
-  through it.
+  buzz you when Claude is blocked waiting on approval, naming the tool it wants
+  to run. `/notify setup` walks you through it.
 
 ## Installation
 

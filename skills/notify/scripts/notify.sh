@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 # notify.sh — local sound + ntfy push for Claude Code.
 #
-#   notify.sh stop           hook mode, Stop event        (hook JSON on stdin)
-#   notify.sh input          hook mode, Notification event (hook JSON on stdin)
+#   notify.sh stop           hook mode, Stop event              (hook JSON on stdin)
+#   notify.sh input          hook mode, Notification event      (hook JSON on stdin)
+#   notify.sh permission     hook mode, PermissionRequest event (hook JSON on stdin)
 #   notify.sh push "text"    ad-hoc push
 #   notify.sh init [--force] create/print the ntfy topic
+#   notify.sh auth           store an ntfy access token (reads it from stdin)
+#   notify.sh auth --clear   forget the stored token
 #   notify.sh test           push a probe, verify the server accepted it
 #   notify.sh status         print config and hook wiring
 #
 # Config (all optional):
 #   ~/.claude/ntfy-topic   topic name, one line          (or $NTFY_TOPIC)
+#   ~/.claude/ntfy-token   ntfy access token, one line   (or $NTFY_TOKEN)
+#   NTFY_USER/NTFY_PASSWORD  basic auth, if the server uses it instead
 #   NTFY_SERVER            default https://ntfy.sh
 #   CLAUDE_NOTIFY_SOUND    path to a sound file
 #   CLAUDE_NOTIFY_SILENT   set to any value to mute the local sound
@@ -18,6 +23,7 @@ set -uo pipefail
 
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 TOPIC_FILE="$CLAUDE_DIR/ntfy-topic"
+TOKEN_FILE="$CLAUDE_DIR/ntfy-token"
 SETTINGS="$CLAUDE_DIR/settings.json"
 SERVER="${NTFY_SERVER:-https://ntfy.sh}"
 DEFAULT_SOUND="/System/Library/Sounds/Glass.aiff"
@@ -40,26 +46,59 @@ require_topic() {
   printf '%s' "$topic"
 }
 
+read_token() {
+  if [ -n "${NTFY_TOKEN:-}" ]; then printf '%s' "$NTFY_TOKEN"; return 0; fi
+  [ -r "$TOKEN_FILE" ] || return 1
+  tr -d '[:space:]' < "$TOKEN_FILE"
+}
+
+# emits nothing when the relay needs no credentials, which is the ntfy.sh default
+auth_args() {
+  local tok
+  if tok="$(read_token)" && [ -n "$tok" ]; then
+    AUTH=(-H "Authorization: Bearer $tok")
+  elif [ -n "${NTFY_USER:-}" ]; then
+    AUTH=(-u "${NTFY_USER}:${NTFY_PASSWORD:-}")
+  else
+    AUTH=()
+  fi
+}
+
+auth_kind() {
+  if [ -n "${NTFY_TOKEN:-}" ]; then printf 'token (from $NTFY_TOKEN)'
+  elif [ -r "$TOKEN_FILE" ] && [ -s "$TOKEN_FILE" ]; then printf 'token (%s)' "$TOKEN_FILE"
+  elif [ -n "${NTFY_USER:-}" ]; then printf 'basic auth as %s' "$NTFY_USER"
+  else printf 'none (topic name is the only secret)'; fi
+}
+
 play_sound() {
   [ -z "${CLAUDE_NOTIFY_SILENT:-}" ] || return 0
   if [ -r "$SOUND" ]; then
     if   command -v afplay >/dev/null 2>&1; then afplay "$SOUND" >/dev/null 2>&1 &
     elif command -v paplay >/dev/null 2>&1; then paplay "$SOUND" >/dev/null 2>&1 &
     elif command -v aplay  >/dev/null 2>&1; then aplay -q "$SOUND" >/dev/null 2>&1 &
-    else printf '\a'
+    else printf '\a' >&2
     fi
   else
-    printf '\a'
+    printf '\a' >&2
   fi
 }
 
 # push <title> <body> <tags> <priority>
+#   0 delivered · 1 unreachable or refused · 3 auth rejected
 push() {
-  local topic; topic="$(read_topic)" || return 1
+  local topic code; topic="$(read_topic)" || return 1
   [ -n "$topic" ] || return 1
-  curl -fsS --max-time 8 \
+  auth_args
+  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 \
     -H "Title: $1" -H "Tags: $3" -H "Priority: $4" \
-    -d "$2" "$SERVER/$topic" >/dev/null 2>&1
+    ${AUTH[@]+"${AUTH[@]}"} \
+    -d "$2" "$SERVER/$topic" 2>/dev/null)" || return 1
+  case "$code" in
+    2??)     return 0 ;;
+    401|403) return 3 ;;
+    *)       return 1 ;;
+  esac
 }
 
 project_name() {
@@ -68,18 +107,47 @@ project_name() {
   basename "$cwd"
 }
 
-cmd_hook() {   # $1 = stop|input
+# keep a push readable on a watch face rather than truncated by the OS
+clamp() {
+  local s="$1" n="${2:-110}"
+  if [ "${#s}" -le "$n" ]; then printf '%s' "$s"
+  else printf '%s...' "${s:0:$((n - 3))}"; fi
+}
+
+cmd_hook() {   # $1 = stop|input|permission
   local payload cwd body
   payload="$(cat)"
   cwd="$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null)"
-  if [ "$1" = "input" ]; then
-    body="$(printf '%s' "$payload" | jq -r '.message // empty' 2>/dev/null)"
-    [ -n "$body" ] || body="Waiting for your input"
-    play_sound; push "Claude Code - $(project_name "$cwd")" "$body" "bell" "4"
-  else
-    play_sound; push "Claude Code - $(project_name "$cwd")" "Turn finished" "white_check_mark" "3"
-  fi
+  case "$1" in
+    permission)
+      # PermissionRequest carries tool_name and tool_input, so say what is being
+      # asked for. "Bash: rm -rf build" tells you whether to walk back to the
+      # desk; "waiting for input" does not.
+      body="$(printf '%s' "$payload" | jq -r '
+        (.tool_name // "") as $t
+        | (.tool_input // {}) as $i
+        | ($i.command // $i.file_path // $i.path // $i.url // $i.pattern // "") as $d
+        | if ($t | length) == 0 then ""
+          elif ($d | length) > 0 then "\($t): \($d)"
+          else "\($t) needs approval" end' 2>/dev/null)"
+      [ -n "$body" ] || body="Needs your approval to continue"
+      play_sound
+      push "Claude Code - $(project_name "$cwd")" "$(clamp "$body")" "lock" "4"
+      ;;
+    input)
+      body="$(printf '%s' "$payload" | jq -r '.message // empty' 2>/dev/null)"
+      [ -n "$body" ] || body="Waiting for your input"
+      play_sound
+      push "Claude Code - $(project_name "$cwd")" "$(clamp "$body")" "bell" "4"
+      ;;
+    *)
+      play_sound
+      push "Claude Code - $(project_name "$cwd")" "Turn finished" "white_check_mark" "3"
+      ;;
+  esac
   wait
+  # always 0: a notification must never fail a turn, and on PermissionRequest a
+  # non-zero exit would interfere with the permission decision itself
   exit 0
 }
 
@@ -88,8 +156,12 @@ cmd_push() {
   [ -n "$body" ] || die "usage: notify.sh push \"message\""
   require_topic >/dev/null || die "no topic configured - run: notify.sh init"
   play_sound
-  push "Claude Code - $(project_name)" "$body" "speech_balloon" "3" \
-    || die "push failed - check network and \$NTFY_SERVER"
+  push "Claude Code - $(project_name)" "$body" "speech_balloon" "3"
+  case "$?" in
+    0) ;;
+    3) die "relay rejected the credentials - run: notify.sh auth" ;;
+    *) die "push failed - check network and \$NTFY_SERVER" ;;
+  esac
   wait
 }
 
@@ -108,17 +180,53 @@ cmd_init() {
   printf 'subscribe to this in the ntfy app (server: %s)\n' "$SERVER"
 }
 
+cmd_auth() {
+  if [ "${1:-}" = "--clear" ]; then
+    rm -f "$TOKEN_FILE"
+    printf 'token removed. pushes now rely on the topic name alone.\n'
+    return 0
+  fi
+  [ "${1:-}" = "" ] || die "usage: notify.sh auth [--clear]   (the token is read from stdin)"
+
+  local tok
+  if [ -t 0 ]; then
+    printf 'paste the ntfy access token, then press enter (input hidden): ' >&2
+    read -r -s tok; printf '\n' >&2
+  else
+    read -r tok || true
+  fi
+  tok="$(printf '%s' "${tok:-}" | tr -d '[:space:]')"
+  [ -n "$tok" ] || die "no token given - nothing written"
+
+  mkdir -p "$CLAUDE_DIR"
+  (umask 077; printf '%s\n' "$tok" > "$TOKEN_FILE")
+  chmod 600 "$TOKEN_FILE"
+  # never echo the token back; the whole point is that it stays out of scrollback
+  case "$tok" in
+    tk_*) printf 'token saved to %s (mode 600)\n' "$TOKEN_FILE" ;;
+    *)    printf 'token saved to %s (mode 600)\n' "$TOKEN_FILE"
+          printf 'note: ntfy access tokens usually start with tk_ - check it if pushes 401\n' ;;
+  esac
+  printf 'verify with: notify.sh test\n'
+}
+
 cmd_test() {
   local topic stamp
   topic="$(require_topic)" || die "no topic configured - run: notify.sh init"
   stamp="probe-$(date +%s)"
   play_sound
-  push "Claude Code - test" "$stamp" "test_tube" "4" || die "push rejected by $SERVER"
+  push "Claude Code - test" "$stamp" "test_tube" "4"
+  case "$?" in
+    0) ;;
+    3) die "relay rejected the credentials - run: notify.sh auth (or notify.sh auth --clear if the topic needs none)" ;;
+    *) die "push rejected by $SERVER - check network and \$NTFY_SERVER" ;;
+  esac
   # the relay needs a moment before a message is pollable
   local i found=0
   for i in 1 2 3 4 5; do
     sleep 2
-    if curl -fsS --max-time 10 "$SERVER/$topic/json?poll=1" 2>/dev/null | grep -q "$stamp"; then
+    auth_args
+    if curl -fsS --max-time 10 ${AUTH[@]+"${AUTH[@]}"} "$SERVER/$topic/json?poll=1" 2>/dev/null | grep -q "$stamp"; then
       found=1; break
     fi
   done
@@ -136,6 +244,7 @@ cmd_status() {
     printf 'topic:   (none - run: notify.sh init)\n'
   fi
   printf 'server:  %s\n' "$SERVER"
+  printf 'auth:    %s\n' "$(auth_kind)"
   if [ -n "${CLAUDE_NOTIFY_SILENT:-}" ]; then
     printf 'sound:   muted (CLAUDE_NOTIFY_SILENT set)\n'
   elif [ -r "$SOUND" ]; then
@@ -144,22 +253,23 @@ cmd_status() {
     printf 'sound:   %s (unreadable - falls back to terminal bell)\n' "$SOUND"
   fi
   local ev
-  for ev in Stop Notification; do
+  for ev in Stop Notification PermissionRequest; do
     if [ -r "$SETTINGS" ] && jq -e --arg e "$ev" \
          '[.hooks[$e][]?.hooks[]?.command? // empty] | any(test("notify\\.sh"))' \
          "$SETTINGS" >/dev/null 2>&1; then
-      printf 'hook %-13s wired\n' "$ev:"
+      printf 'hook %-19s wired\n' "$ev:"
     else
-      printf 'hook %-13s not installed\n' "$ev:"
+      printf 'hook %-19s not installed\n' "$ev:"
     fi
   done
 }
 
 case "${1:-}" in
-  stop|input) cmd_hook "$1" ;;
+  stop|input|permission) cmd_hook "$1" ;;
   push)       shift; cmd_push "$@" ;;
   init)       shift; cmd_init "${1:-}" ;;
+  auth)       shift; cmd_auth "${1:-}" ;;
   test)       cmd_test ;;
   status)     cmd_status ;;
-  *)          die "usage: notify.sh {stop|input|push <msg>|init [--force]|test|status}" ;;
+  *)          die "usage: notify.sh {stop|input|permission|push <msg>|init [--force]|auth [--clear]|test|status}" ;;
 esac
