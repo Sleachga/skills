@@ -1,13 +1,13 @@
 ---
 name: notify
 description: >
-  Push a notification to the user's phone and smartwatch via ntfy, and install
-  or repair the Claude Code hooks that buzz when Claude is blocked waiting for
-  approval, when a turn finishes, and when Claude Code raises a notification.
-  Use when the user invokes /notify. Claude cannot invoke this itself, by
-  design — the hooks already cover being blocked and being done, without the
-  model in the loop, so there is nothing here to trigger on a phrase.
-disable-model-invocation: true
+  Set up, repair or use phone and smartwatch notifications for Claude Code via
+  ntfy, so the user is buzzed when Claude is blocked waiting on their approval,
+  when a turn finishes, or when Claude Code raises a notification. Use whenever
+  the user invokes /notify, or asks to set up, configure, install, check, fix
+  or turn off notifications, alerts, pings or "buzz my watch" for Claude Code —
+  including phrasings like "set up the notify skill", "notify me on my phone",
+  "ping my watch when you need me", or "why aren't my notifications firing".
 ---
 
 Two halves. **Hooks** fire automatically — Claude is blocked on approval, a
@@ -27,7 +27,7 @@ requested, so the push can say `Bash: rm -rf node_modules` rather than
 | --- | --- |
 | `/notify` (bare) | Push a one-line summary of what just happened in this turn |
 | `/notify <message>` | Push that text verbatim |
-| `/notify setup` | Hand them `scripts/notify.sh setup` to run — see [SETUP.md](SETUP.md) |
+| `/notify setup` | Run `scripts/notify.sh setup` **yourself**, then hand back the topic and the token step — see [SETUP.md](SETUP.md) |
 | `/notify test` | Push a test, then confirm arrival via the ntfy poll API |
 | `/notify auth` | Store an ntfy access token — see [Credentials](#credentials) |
 | `/notify status` | Report topic, auth, hook state, sound. Change nothing. |
@@ -70,15 +70,19 @@ So ask, during setup, which of these the user is on:
 | ntfy Pro, or self-hosted with access control | An access token, `tk_…` |
 | Self-hosted with basic auth | `NTFY_USER` and `NTFY_PASSWORD` in the environment |
 
-**Never handle the token yourself.** Do not ask the user to paste it into the
-chat, do not pass it as a command argument, and do not read it from a file to
-echo back. Tell them to run setup, or just the auth step, in their own
-terminal:
+**The token is the only part you hand over.** Run setup yourself; it skips the
+token prompt when there is no terminal and tells you so. Then give the user
+this one line to run in their own shell:
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/notify.sh setup   # the whole flow
-${CLAUDE_SKILL_DIR}/scripts/notify.sh auth    # just the token
+${CLAUDE_SKILL_DIR}/scripts/notify.sh auth
 ```
+
+Do not ask them to paste the token into the chat, do not pass it as a command
+argument, and do not read it back from the file. Handing over the *whole* setup
+because it contains a credential step is over-correcting: the topic and the
+hooks are yours to do, and leaving them undone means nothing works until the
+user does your job for you.
 
 It prompts, reads the token from stdin with echo off, and writes it to
 `~/.claude/ntfy-token` at mode 600. A token pasted into the chat is a token in
@@ -117,8 +121,10 @@ session needs a restart. Say so; don't re-run the installer.
 
 ## Do not
 
-- Do not invoke this yourself. The hooks already cover blocked and finished,
-  and they do it without the model in the loop.
+- Do not push unprompted. Setup, repair and status are fair game when the user
+  asks for them, but a `push` is a buzz on someone's wrist: send one only when
+  they asked, via `/notify`. The hooks already cover blocked and finished
+  without the model in the loop, so there is rarely a reason to add another.
 - Do not put file contents, secrets, credentials, or PII in a push. On the free
   tier the topic name is the only secret, so treat anything pushed as public.
   Project name and status text only.

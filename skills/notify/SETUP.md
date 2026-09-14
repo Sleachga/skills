@@ -4,44 +4,57 @@
 exactly what data reaches ntfy.sh. Read it if the user asks what the setup
 looks like, what gets sent, or whether it is safe.
 
-## Hand them the script
+## Run it
 
-Setup is one command, and **the user should run it themselves in their own
-terminal**:
+Run this yourself. Don't paste instructions and make the user do it:
 
 ```bash
 ${CLAUDE_SKILL_DIR}/scripts/notify.sh setup
 ```
 
-That is not ceremony. The script prompts for the ntfy access token with echo
-off and reads it from stdin, so a token never has to travel through a
-conversation, a tool call, or a transcript. If you run setup on their behalf,
-that prompt is the one thing you cannot do for them.
+It creates or reuses the topic, installs the three hooks, and prints the
+resulting configuration. It is safe to re-run: an existing topic is kept and
+hooks are de-duplicated.
 
-It is safe to re-run: an existing topic is kept, hooks are de-duplicated, and
-nothing is sent without asking.
+Because you are not a terminal, it will skip two steps rather than pretend —
+and those two are genuinely the user's:
 
-## What it does
+| Skipped | Why | What you say |
+| --- | --- | --- |
+| The access token | Typed with echo off in their shell. A token that reaches you is a token in a transcript. | Give them the one command, below |
+| The test push | Sends a message to a third party, and is pointless before they have subscribed | Tell them to run it once subscribed |
 
-| Step | Action |
-| --- | --- |
-| 1 | Creates or reuses the ntfy topic, and prints it for the phone |
-| 2 | Asks which relay: public, ntfy Pro with a token, or self-hosted |
-| 3 | Installs the `Stop`, `Notification` and `PermissionRequest` hooks |
-| 4 | Prints the resulting configuration |
-| 5 | Offers a test push, after asking |
+Hooks and the topic live in `~/.claude/`, not in the project, so this is a
+once-per-machine job. Setting it up from any repo covers every repo.
 
-Then it lists what is left, which is all on their phone.
+## Then hand back exactly three things
 
-## If you run it yourself
+Report these and stop. Do not attempt them yourself.
 
-You can. It detects that it has no terminal and adapts: it creates the topic,
-installs the hooks, prints the configuration, and **skips both the token prompt
-and the test push** rather than pretending. It then tells the user which two
-commands to run themselves.
+1. **The topic**, printed verbatim, so they can subscribe in the ntfy app.
+   Install ntfy from the Play Store or App Store, **+**, paste, Subscribe.
+2. **The token**, only if they are on ntfy Pro or a self-hosted relay with
+   access control. Ask which relay first — see [Credentials in
+   SKILL.md](SKILL.md#credentials). If they need one:
 
-That is the right division. Everything except credentials and consenting to an
-outbound push is yours to do; those two are theirs.
+   ```bash
+   ${CLAUDE_SKILL_DIR}/scripts/notify.sh auth
+   ```
+
+3. **A restart of Claude Code**, or the hooks stay dormant for the session.
+
+Then `notify.sh test` once they say they have subscribed, and ask out loud
+whether the watch actually buzzed — the relay accepting a push is not proof it
+arrived.
+
+If they have a watch: Galaxy Wearable → Notifications → enable ntfy, or Watch
+app → Notifications → ntfy → Mirror iPhone.
+
+## If the user would rather drive
+
+They can run `notify.sh setup` themselves in a terminal, which is the same flow
+plus the interactive relay question and the token prompt. Suggest it when they
+are on ntfy Pro anyway, since it saves a round trip.
 
 ## Talking them through it
 

@@ -273,8 +273,13 @@ cmd_setup() {
     esac
   else
     printf '2/5  credentials: skipped, this is not a terminal.\n'
-    printf '     If your relay needs auth, run "notify.sh auth" yourself so the\n'
-    printf '     token is typed rather than pasted into a transcript.\n'
+    printf '     ASK which relay is in use before calling this done:\n'
+    printf '       * public ntfy.sh  -> nothing more to do, but say plainly that\n'
+    printf '         anyone knowing the topic can read every push, including the\n'
+    printf '         command line in an approval notification\n'
+    printf '       * ntfy Pro or self-hosted -> a token is required, and only the\n'
+    printf '         user can enter it. Give them exactly this line to run:\n'
+    printf '             %s auth\n' "$SELF_DIR/notify.sh"
   fi
   printf '\n'
 
@@ -313,7 +318,10 @@ cmd_setup() {
     *)     cmd_test || printf '     test failed - see the message above.\n' ;;
   esac
 
-  printf '\n=== remaining, on your phone ===\n'
+  printf '\n=== remaining ===\n'
+  if [ "$interactive" -eq 0 ]; then
+    printf '  * confirm which relay, and hand over the auth command if it needs one\n'
+  fi
   printf '  * install ntfy (Play Store / App Store), subscribe to: %s\n' "$topic"
   printf '  * watch: Galaxy Wearable -> Notifications -> enable ntfy,\n'
   printf '           or Watch app -> Notifications -> ntfy -> Mirror iPhone\n'
