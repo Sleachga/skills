@@ -92,8 +92,18 @@ ${CLAUDE_SKILL_DIR}/scripts/seat-log.sh <output_file> --commands-only  # command
 One round is one slice of work. Most tasks take two or three.
 
 **1. Define the slice.** A slice the driver can finish in one turn, plus the
-*interface contract* — function signatures, file paths, expected shapes. The
-contract is what lets the tester write real tests without seeing the code.
+*interface contract* — function signatures, file paths, expected shapes, and
+the edge cases that decide correctness. The contract is what lets the tester
+write real tests without seeing the code, so it has to pin down observable
+behavior, not intent: what the rounding does at a tie, what happens when the
+input is empty, which inputs are errors. Worked examples beat prose — a line
+saying 15% of 2999 is 450 settles a rounding rule that a paragraph will not.
+
+Whatever the contract leaves open, both seats will guess, separately. That is
+useful rather than dangerous, and it is why the next step is worth the
+concurrency: when the driver and the tester independently flag the *same*
+ambiguity, the spec is wrong, not the code. Fix the contract rather than
+picking whichever seat you happened to read first.
 
 **2. Launch the driver and tester in one message, so they run concurrently.**
 This is the point: the tester cannot copy an implementation that does not exist
