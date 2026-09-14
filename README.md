@@ -4,6 +4,9 @@ My Claude Code skills, installable as a plugin.
 
 ## Skills
 
+- **/fanout** — fan out N independent agents on one task, then synthesize what
+  they found. `/fanout 5 <task>` to pick N yourself, otherwise it sizes N to
+  how wide the question is.
 - **/trio** — pair program with three agents: a driver that writes the code,
   a navigator that reviews everything it did and corrects it, and a tester
   that writes tests without seeing the implementation.

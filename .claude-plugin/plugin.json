@@ -1,7 +1,7 @@
 {
   "name": "sleachga-skills",
-  "version": "0.3.0",
-  "description": "Sanford Leach's agent skills: trio (driver/navigator/tester pair programming), expand, concise, and notify (phone/watch push).",
+  "version": "0.4.0",
+  "description": "Sanford Leach's agent skills: fanout (N independent takes), trio (driver/navigator/tester pair programming), expand, concise, and notify (phone/watch push).",
   "author": {
     "name": "Sanford Leach",
     "url": "https://github.com/Sleachga"
@@ -11,6 +11,8 @@
   "keywords": [
     "skills",
     "subagents",
+    "fan-out",
+    "parallel",
     "pair-programming",
     "code-review",
     "verbosity",
@@ -19,6 +21,7 @@
     "hooks"
   ],
   "skills": [
+    "./skills/fanout",
     "./skills/trio",
     "./skills/expand",
     "./skills/concise",
