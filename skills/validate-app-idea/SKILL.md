@@ -152,7 +152,8 @@ file. Sections, kept concise:
 
 **Rendering rules (learned the hard way):** keep the page fully
 self-contained. No mermaid, no Google Fonts, no external scripts; draw
-diagrams as HTML/CSS step boxes. Tokens on `:root` with dark-mode blocks, a
+diagrams as HTML/CSS step boxes. (Artifacts allow Google Fonts, but it stays
+banned here so the HTML backup renders identically offline.) Tokens on `:root` with dark-mode blocks, a
 sticky nav, tables in `overflow-x` containers, no horizontal scroll at 400px.
 
 ## 8. Verify
