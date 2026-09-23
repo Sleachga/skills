@@ -18,6 +18,11 @@ My Claude Code skills, installable as a plugin.
 - **/notify** — push a line to your phone and watch via ntfy, plus hooks that
   buzz you when Claude is blocked waiting on approval, naming the tool it wants
   to run. `/notify setup` walks you through it.
+- **/validate-app-idea** — validate an app idea built on a specific model, API
+  or new tech before building it: parallel research subagents, a bull/bear
+  debate, a tested cost and rate-limit model, a verdict page with go/no-go
+  tests, and a draft Claude Code handoff. Ships a starter model in
+  `skills/validate-app-idea/scripts/` (`node --test` there runs its suite).
 
 ## Installation
 
